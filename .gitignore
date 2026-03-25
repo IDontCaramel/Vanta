@@ -30,3 +30,43 @@
 *.exe
 *.out
 *.app
+/docs
+
+# Build directories
+/build
+/cmake-build-*/
+
+# Environment and configuration
+.env
+.env.local
+.env.*.local
+config.local.*
+settings.local.json
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+
+# Credentials and secrets
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets.json
+credentials.json
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
