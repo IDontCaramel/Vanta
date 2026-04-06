@@ -14,6 +14,12 @@ TEST(ValueTest, SupportsArithmeticAndStringOperations) {
     EXPECT_EQ(Value("Hello ").add(Value("Vanta")).toString(), "Hello Vanta");
 }
 
+TEST(ValueTest, DivisionByZeroThrows) {
+    Value number(10.0);
+
+    EXPECT_THROW(number.divide(Value(0.0)), std::runtime_error);
+}
+
 TEST(EnvironmentTest, ResolvesThroughParentChain) {
     auto global = std::make_shared<Environment>();
     auto child = std::make_shared<Environment>(global);
@@ -24,4 +30,19 @@ TEST(EnvironmentTest, ResolvesThroughParentChain) {
     child->define("local", Value("ok"));
     EXPECT_EQ(child->get("local").toString(), "ok");
     EXPECT_THROW(global->get("local"), std::runtime_error);
+}
+
+TEST(EnvironmentTest, RejectsAssigningUndefinedVariables) {
+    auto env = std::make_shared<Environment>();
+
+    EXPECT_THROW(env->assign("missing", Value(1.0)), std::runtime_error);
+}
+
+TEST(EnvironmentTest, EnforcesTypeHintsOnDefineAndAssign) {
+    auto env = std::make_shared<Environment>();
+
+    EXPECT_THROW(env->define("count", Value("oops"), "Number"), std::runtime_error);
+
+    env->define("count", Value(1.0), "Number");
+    EXPECT_THROW(env->assign("count", Value("oops")), std::runtime_error);
 }

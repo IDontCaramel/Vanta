@@ -20,6 +20,7 @@ struct Parameter {
 };
 
 struct Expr {
+    SourceRange sourceRange;
     virtual ~Expr() = default;
 };
 
@@ -57,6 +58,14 @@ struct MemberExpr final : Expr {
 
     MemberExpr(ExprPtr owner, std::string member)
         : object(std::move(owner)), property(std::move(member)) {}
+};
+
+struct IndexExpr final : Expr {
+    ExprPtr object;
+    ExprPtr index;
+
+    IndexExpr(ExprPtr owner, ExprPtr subscript)
+        : object(std::move(owner)), index(std::move(subscript)) {}
 };
 
 struct UnaryExpr final : Expr {
@@ -121,6 +130,7 @@ struct StringInterpolationExpr final : Expr {
 };
 
 struct Stmt {
+    SourceRange sourceRange;
     virtual ~Stmt() = default;
 };
 

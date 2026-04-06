@@ -12,6 +12,25 @@ std::string trimNumber(double value) {
     return stream.str();
 }
 
+std::string heapTypeLabel(const Value& value) {
+    if (value.as<ArrayValue>()) {
+        return "Array";
+    }
+    if (value.as<ObjectValue>()) {
+        return "Object";
+    }
+    if (value.as<FunctionValue>() || value.as<NativeFunctionValue>()) {
+        return "Function";
+    }
+    if (value.as<ClassValue>()) {
+        return "Class";
+    }
+    if (value.as<InstanceValue>()) {
+        return "Instance";
+    }
+    return "Heap";
+}
+
 }  // namespace
 
 Value::Value() : storage(std::monostate{}) {}
@@ -136,6 +155,22 @@ std::string Value::typeName() const {
     return "unknown";
 }
 
+std::string Value::runtimeTypeLabel() const {
+    switch (type()) {
+        case Type::NULL_:
+            return "Null";
+        case Type::NUMBER:
+            return "Number";
+        case Type::STRING:
+            return "String";
+        case Type::BOOLEAN:
+            return "Boolean";
+        case Type::HEAP:
+            return heapTypeLabel(*this);
+    }
+    return "Unknown";
+}
+
 bool Value::isTruthy() const {
     switch (type()) {
         case Type::NULL_:
@@ -169,6 +204,40 @@ double Value::toNumber() const {
             return 0.0;
     }
     return 0.0;
+}
+
+bool Value::matchesTypeHint(const std::string& typeHint) const {
+    if (!isSupportedTypeHint(typeHint)) {
+        return true;
+    }
+    if (typeHint == "Number") {
+        return isNumber();
+    }
+    if (typeHint == "String") {
+        return isString();
+    }
+    if (typeHint == "Boolean") {
+        return isBoolean();
+    }
+    if (typeHint == "Array") {
+        return as<ArrayValue>() != nullptr;
+    }
+    if (typeHint == "Object") {
+        return as<ObjectValue>() != nullptr;
+    }
+    if (typeHint == "Function") {
+        return as<FunctionValue>() != nullptr || as<NativeFunctionValue>() != nullptr;
+    }
+    if (typeHint == "Null") {
+        return isNull();
+    }
+    return true;
+}
+
+bool Value::isSupportedTypeHint(const std::string& typeHint) {
+    return typeHint == "Number" || typeHint == "String" || typeHint == "Boolean" ||
+           typeHint == "Array" || typeHint == "Object" || typeHint == "Function" ||
+           typeHint == "Null";
 }
 
 Value Value::add(const Value& other) const {

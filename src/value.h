@@ -65,8 +65,12 @@ public:
 
     std::string toString() const;
     std::string typeName() const;
+    std::string runtimeTypeLabel() const;
     bool isTruthy() const;
     double toNumber() const;
+    bool matchesTypeHint(const std::string& typeHint) const;
+
+    static bool isSupportedTypeHint(const std::string& typeHint);
 
     Value add(const Value& other) const;
     Value subtract(const Value& other) const;
@@ -105,22 +109,25 @@ struct FunctionValue final : HeapValue {
     std::vector<Parameter> parameters;
     std::vector<StmtPtr> body;
     ExprPtr expressionBody;
+    std::string returnType;
     bool implicitReturn = false;
     bool isInitializer = false;
     std::shared_ptr<Environment> closure;
 
     FunctionValue(std::string fnName, std::vector<Parameter> params, std::vector<StmtPtr> stmts,
-                  std::shared_ptr<Environment> env)
+                  std::shared_ptr<Environment> env, std::string returnHint = {})
         : name(std::move(fnName)),
           parameters(std::move(params)),
           body(std::move(stmts)),
+          returnType(std::move(returnHint)),
           closure(std::move(env)) {}
 
     FunctionValue(std::string fnName, std::vector<Parameter> params, ExprPtr exprBody,
-                  std::shared_ptr<Environment> env)
+                  std::shared_ptr<Environment> env, std::string returnHint = {})
         : name(std::move(fnName)),
           parameters(std::move(params)),
           expressionBody(std::move(exprBody)),
+          returnType(std::move(returnHint)),
           implicitReturn(true),
           closure(std::move(env)) {}
 

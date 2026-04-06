@@ -5,17 +5,19 @@
 #include <vector>
 
 #include "ast.h"
+#include "source_file.h"
 #include "token.h"
 
 class Parser {
 public:
-    explicit Parser(std::vector<Token> tokens);
+    explicit Parser(std::vector<Token> tokens, std::shared_ptr<const SourceDocument> source = nullptr);
 
     std::shared_ptr<ProgramStmt> parse();
     ExprPtr parseExpressionOnly();
 
 private:
     std::vector<Token> tokens;
+    std::shared_ptr<const SourceDocument> source;
     std::size_t current = 0;
 
     StmtPtr declaration();
@@ -46,12 +48,13 @@ private:
     ExprPtr primary();
 
     ExprPtr finishCall(ExprPtr callee);
+    ExprPtr finishIndex(ExprPtr object);
     ExprPtr parseFunctionExpression();
     ExprPtr parseArrowFunctionWithIdentifier();
     ExprPtr parseArrowFunctionWithParens();
     std::vector<Parameter> parseParameterList(TokenType closingToken);
     std::string parseOptionalTypeHint();
-    std::vector<std::variant<std::string, ExprPtr>> parseInterpolationParts(const std::string& raw);
+    std::vector<std::variant<std::string, ExprPtr>> parseInterpolationParts(const Token& token);
 
     bool isArrowFunctionAhead() const;
     bool isAtEnd() const;

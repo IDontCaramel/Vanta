@@ -22,7 +22,8 @@ private:
     bool match(char expected);
     bool isAtEnd() const;
     void skipWhitespaceAndComments();
-    Token makeToken(TokenType type, const std::string& lexeme, int tokenLine, int tokenColumn) const;
+    Token makeToken(TokenType type, const std::string& lexeme, int tokenLine, int tokenColumn,
+                    int tokenLength = -1) const;
     Token scanNumber();
     Token scanString(char quote, bool interpolation);
     Token scanIdentifierOrKeyword();

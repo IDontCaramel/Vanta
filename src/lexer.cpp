@@ -70,112 +70,112 @@ std::vector<Token> Lexer::tokenize() {
         switch (ch) {
             case '+':
                 if (match('=')) {
-                    tokens.emplace_back(TokenType::PLUS_ASSIGN, "+=", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::PLUS_ASSIGN, "+=", tokenLine, tokenColumn, 2);
                 } else {
-                    tokens.emplace_back(TokenType::PLUS, "+", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::PLUS, "+", tokenLine, tokenColumn, 1);
                 }
                 break;
             case '-':
                 if (match('=')) {
-                    tokens.emplace_back(TokenType::MINUS_ASSIGN, "-=", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::MINUS_ASSIGN, "-=", tokenLine, tokenColumn, 2);
                 } else if (match('>')) {
-                    tokens.emplace_back(TokenType::TYPE_ARROW, "->", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::TYPE_ARROW, "->", tokenLine, tokenColumn, 2);
                 } else {
-                    tokens.emplace_back(TokenType::MINUS, "-", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::MINUS, "-", tokenLine, tokenColumn, 1);
                 }
                 break;
             case '*':
-                tokens.emplace_back(TokenType::STAR, "*", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::STAR, "*", tokenLine, tokenColumn, 1);
                 break;
             case '/':
-                tokens.emplace_back(TokenType::SLASH, "/", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::SLASH, "/", tokenLine, tokenColumn, 1);
                 break;
             case '%':
-                tokens.emplace_back(TokenType::PERCENT, "%", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::PERCENT, "%", tokenLine, tokenColumn, 1);
                 break;
             case '=':
                 if (match('=')) {
-                    tokens.emplace_back(TokenType::EQ, "==", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::EQ, "==", tokenLine, tokenColumn, 2);
                 } else if (match('>')) {
-                    tokens.emplace_back(TokenType::ARROW, "=>", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::ARROW, "=>", tokenLine, tokenColumn, 2);
                 } else {
-                    tokens.emplace_back(TokenType::ASSIGN, "=", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::ASSIGN, "=", tokenLine, tokenColumn, 1);
                 }
                 break;
             case '!':
                 if (match('=')) {
-                    tokens.emplace_back(TokenType::NEQ, "!=", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::NEQ, "!=", tokenLine, tokenColumn, 2);
                 } else {
-                    tokens.emplace_back(TokenType::NOT, "!", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::NOT, "!", tokenLine, tokenColumn, 1);
                 }
                 break;
             case '<':
                 if (match('=')) {
-                    tokens.emplace_back(TokenType::LTE, "<=", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::LTE, "<=", tokenLine, tokenColumn, 2);
                 } else {
-                    tokens.emplace_back(TokenType::LT, "<", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::LT, "<", tokenLine, tokenColumn, 1);
                 }
                 break;
             case '>':
                 if (match('=')) {
-                    tokens.emplace_back(TokenType::GTE, ">=", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::GTE, ">=", tokenLine, tokenColumn, 2);
                 } else {
-                    tokens.emplace_back(TokenType::GT, ">", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::GT, ">", tokenLine, tokenColumn, 1);
                 }
                 break;
             case '&':
                 if (match('&')) {
-                    tokens.emplace_back(TokenType::AND, "&&", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::AND, "&&", tokenLine, tokenColumn, 2);
                 } else {
-                    tokens.emplace_back(TokenType::ERROR_, "&", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::ERROR_, "&", tokenLine, tokenColumn, 1);
                 }
                 break;
             case '|':
                 if (match('|')) {
-                    tokens.emplace_back(TokenType::OR, "||", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::OR, "||", tokenLine, tokenColumn, 2);
                 } else if (match('>')) {
-                    tokens.emplace_back(TokenType::PIPE, "|>", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::PIPE, "|>", tokenLine, tokenColumn, 2);
                 } else {
-                    tokens.emplace_back(TokenType::ERROR_, "|", tokenLine, tokenColumn);
+                    tokens.emplace_back(TokenType::ERROR_, "|", tokenLine, tokenColumn, 1);
                 }
                 break;
             case '(':
-                tokens.emplace_back(TokenType::LPAREN, "(", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::LPAREN, "(", tokenLine, tokenColumn, 1);
                 break;
             case ')':
-                tokens.emplace_back(TokenType::RPAREN, ")", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::RPAREN, ")", tokenLine, tokenColumn, 1);
                 break;
             case '{':
-                tokens.emplace_back(TokenType::LBRACE, "{", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::LBRACE, "{", tokenLine, tokenColumn, 1);
                 break;
             case '}':
-                tokens.emplace_back(TokenType::RBRACE, "}", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::RBRACE, "}", tokenLine, tokenColumn, 1);
                 break;
             case '[':
-                tokens.emplace_back(TokenType::LBRACKET, "[", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::LBRACKET, "[", tokenLine, tokenColumn, 1);
                 break;
             case ']':
-                tokens.emplace_back(TokenType::RBRACKET, "]", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::RBRACKET, "]", tokenLine, tokenColumn, 1);
                 break;
             case '.':
-                tokens.emplace_back(TokenType::DOT, ".", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::DOT, ".", tokenLine, tokenColumn, 1);
                 break;
             case ',':
-                tokens.emplace_back(TokenType::COMMA, ",", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::COMMA, ",", tokenLine, tokenColumn, 1);
                 break;
             case ';':
-                tokens.emplace_back(TokenType::SEMICOLON, ";", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::SEMICOLON, ";", tokenLine, tokenColumn, 1);
                 break;
             case ':':
-                tokens.emplace_back(TokenType::COLON, ":", tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::COLON, ":", tokenLine, tokenColumn, 1);
                 break;
             default:
-                tokens.emplace_back(TokenType::ERROR_, std::string(1, ch), tokenLine, tokenColumn);
+                tokens.emplace_back(TokenType::ERROR_, std::string(1, ch), tokenLine, tokenColumn, 1);
                 break;
         }
     }
 
-    tokens.emplace_back(TokenType::EOF_, "", line, column);
+    tokens.emplace_back(TokenType::EOF_, "", line, column, 1);
     return tokens;
 }
 
@@ -229,8 +229,9 @@ void Lexer::skipWhitespaceAndComments() {
     }
 }
 
-Token Lexer::makeToken(TokenType type, const std::string& lexeme, int tokenLine, int tokenColumn) const {
-    return Token(type, lexeme, tokenLine, tokenColumn);
+Token Lexer::makeToken(TokenType type, const std::string& lexeme, int tokenLine, int tokenColumn,
+                       int tokenLength) const {
+    return Token(type, lexeme, tokenLine, tokenColumn, tokenLength);
 }
 
 Token Lexer::scanNumber() {
@@ -299,8 +300,9 @@ Token Lexer::scanString(char quote, bool interpolation) {
         advance();
     }
 
+    const int tokenLength = column - tokenColumn;
     return makeToken(interpolation ? TokenType::INTERP_STRING : TokenType::STRING, value,
-                     tokenLine, tokenColumn);
+                     tokenLine, tokenColumn, tokenLength);
 }
 
 Token Lexer::scanIdentifierOrKeyword() {

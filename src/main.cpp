@@ -1,45 +1,13 @@
-#include <fstream>
-#include <iostream>
-#include <sstream>
+#include <string>
+#include <vector>
 
-#include "evaluator.h"
-#include "lexer.h"
-#include "parser.h"
-#include "source_file.h"
+#include "cli.h"
 
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        std::cerr << "Usage: vanta <filename" << kSourceFileExtension << ">" << std::endl;
-        return 1;
+    std::vector<std::string> args;
+    args.reserve(static_cast<std::size_t>(argc > 0 ? argc - 1 : 0));
+    for (int i = 1; i < argc; ++i) {
+        args.emplace_back(argv[i]);
     }
-
-    if (!hasSupportedSourceExtension(argv[1])) {
-        std::cerr << "Error: expected a " << supportedSourceFileDescription()
-                  << " source file, got: " << argv[1] << std::endl;
-        return 1;
-    }
-
-    std::ifstream file(argv[1]);
-    if (!file) {
-        std::cerr << "Could not open file: " << argv[1] << std::endl;
-        return 1;
-    }
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-
-    try {
-        Lexer lexer(buffer.str());
-        Parser parser(lexer.tokenize());
-        auto program = parser.parse();
-        Evaluator evaluator;
-        evaluator.evaluate(program);
-        return 0;
-    } catch (const ThrowSignal& signal) {
-        std::cerr << "Uncaught exception: " << signal.value.toString() << std::endl;
-        return 1;
-    } catch (const std::exception& error) {
-        std::cerr << "Error: " << error.what() << std::endl;
-        return 1;
-    }
+    return runCli(args);
 }

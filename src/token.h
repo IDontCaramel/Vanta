@@ -1,6 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <string>
+
+#include "source_file.h"
 
 enum class TokenType {
     NUMBER,
@@ -70,7 +73,16 @@ struct Token {
     std::string lexeme;
     int line;
     int column;
+    int length;
 
-    Token(TokenType tokenType, std::string tokenLexeme, int tokenLine, int tokenColumn)
-        : type(tokenType), lexeme(std::move(tokenLexeme)), line(tokenLine), column(tokenColumn) {}
+    Token(TokenType tokenType, std::string tokenLexeme, int tokenLine, int tokenColumn, int tokenLength = -1)
+        : type(tokenType),
+          lexeme(std::move(tokenLexeme)),
+          line(tokenLine),
+          column(tokenColumn),
+          length(tokenLength >= 0 ? tokenLength : static_cast<int>(lexeme.size())) {}
+
+    SourceRange range() const {
+        return SourceRange::fromBounds(line, column, line, column + std::max(1, length));
+    }
 };

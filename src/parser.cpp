@@ -3,26 +3,61 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "diagnostic.h"
 #include "lexer.h"
 
 namespace {
 
-std::string tokenDescription(const Token& token) {
-    std::ostringstream stream;
-    stream << "line " << token.line << ", column " << token.column;
-    return stream.str();
+SourceRange mergeRanges(const SourceRange& start, const SourceRange& end) {
+    if (!start.isValid()) {
+        return end;
+    }
+    if (!end.isValid()) {
+        return start;
+    }
+    return SourceRange::fromBounds(start.start.line, start.start.column, end.end.line, end.end.column);
+}
+
+template <typename NodePtr>
+NodePtr withRange(NodePtr node, const SourceRange& range) {
+    node->sourceRange = range;
+    return node;
+}
+
+template <typename NodePtr>
+NodePtr withRange(NodePtr node, const Token& token) {
+    node->sourceRange = token.range();
+    return node;
+}
+
+std::string describeToken(const Token& token) {
+    if (token.type == TokenType::EOF_) {
+        return "end of input";
+    }
+    if (token.lexeme.empty()) {
+        return "token";
+    }
+    return "'" + token.lexeme + "'";
 }
 
 }  // namespace
 
-Parser::Parser(std::vector<Token> tokenStream) : tokens(std::move(tokenStream)) {}
+Parser::Parser(std::vector<Token> tokenStream, std::shared_ptr<const SourceDocument> sourceDocument)
+    : tokens(std::move(tokenStream)), source(std::move(sourceDocument)) {}
 
 std::shared_ptr<ProgramStmt> Parser::parse() {
     std::vector<StmtPtr> statements;
     while (!isAtEnd()) {
         statements.push_back(declaration());
     }
-    return std::make_shared<ProgramStmt>(std::move(statements));
+    auto program = std::make_shared<ProgramStmt>(std::move(statements));
+    if (!program->statements.empty()) {
+        program->sourceRange = mergeRanges(program->statements.front()->sourceRange,
+                                           program->statements.back()->sourceRange);
+    } else if (!tokens.empty()) {
+        program->sourceRange = tokens.front().range();
+    }
+    return program;
 }
 
 ExprPtr Parser::parseExpressionOnly() {
@@ -45,6 +80,7 @@ StmtPtr Parser::declaration() {
 }
 
 StmtPtr Parser::varDeclaration(bool expectSemicolon) {
+    const Token keyword = previous();
     if (match(TokenType::LBRACKET)) {
         std::vector<std::string> names;
         if (!check(TokenType::RBRACKET)) {
@@ -58,7 +94,9 @@ StmtPtr Parser::varDeclaration(bool expectSemicolon) {
         if (expectSemicolon) {
             consume(TokenType::SEMICOLON, "expected ; after variable declaration");
         }
-        return std::make_shared<VarDeclStmt>(std::move(names), true, std::move(initializer));
+        const SourceRange initializerRange = initializer->sourceRange;
+        return withRange(std::make_shared<VarDeclStmt>(std::move(names), true, std::move(initializer)),
+                         mergeRanges(keyword.range(), initializerRange));
     }
 
     if (match(TokenType::LBRACE)) {
@@ -74,7 +112,9 @@ StmtPtr Parser::varDeclaration(bool expectSemicolon) {
         if (expectSemicolon) {
             consume(TokenType::SEMICOLON, "expected ; after variable declaration");
         }
-        return std::make_shared<VarDeclStmt>(std::move(names), false, std::move(initializer));
+        const SourceRange initializerRange = initializer->sourceRange;
+        return withRange(std::make_shared<VarDeclStmt>(std::move(names), false, std::move(initializer)),
+                         mergeRanges(keyword.range(), initializerRange));
     }
 
     const std::string name = consume(TokenType::IDENTIFIER, "expected variable name").lexeme;
@@ -86,10 +126,13 @@ StmtPtr Parser::varDeclaration(bool expectSemicolon) {
     if (expectSemicolon) {
         consume(TokenType::SEMICOLON, "expected ; after variable declaration");
     }
-    return std::make_shared<VarDeclStmt>(name, initializer, typeHint);
+    const SourceRange endRange = initializer ? initializer->sourceRange : previous().range();
+    return withRange(std::make_shared<VarDeclStmt>(name, initializer, typeHint),
+                     mergeRanges(keyword.range(), endRange));
 }
 
 std::shared_ptr<FunctionDeclStmt> Parser::functionDeclaration(const std::string& kind, bool allowAnonymousName) {
+    const Token keyword = previous();
     std::string name;
     if (!allowAnonymousName || check(TokenType::IDENTIFIER)) {
         name = consume(TokenType::IDENTIFIER, "expected " + kind + " name").lexeme;
@@ -102,11 +145,13 @@ std::shared_ptr<FunctionDeclStmt> Parser::functionDeclaration(const std::string&
                                        ? consume(TokenType::IDENTIFIER, "expected return type").lexeme
                                        : std::string();
     std::shared_ptr<BlockStmt> body = blockStatement();
-    return std::make_shared<FunctionDeclStmt>(name, std::move(parameters), std::move(body->statements),
-                                              returnType);
+    return withRange(std::make_shared<FunctionDeclStmt>(name, std::move(parameters), std::move(body->statements),
+                                                        returnType),
+                     mergeRanges(keyword.range(), body->sourceRange));
 }
 
 StmtPtr Parser::classDeclaration() {
+    const Token keyword = previous();
     const std::string name = consume(TokenType::IDENTIFIER, "expected class name").lexeme;
     std::string parentName;
     if (match(TokenType::EXTENDS)) {
@@ -119,8 +164,9 @@ StmtPtr Parser::classDeclaration() {
         consume(TokenType::FUNC, "expected func in class body");
         methods.push_back(functionDeclaration("method"));
     }
-    consume(TokenType::RBRACE, "expected } after class body");
-    return std::make_shared<ClassDeclStmt>(name, parentName, std::move(methods));
+    const Token closingBrace = consume(TokenType::RBRACE, "expected } after class body");
+    return withRange(std::make_shared<ClassDeclStmt>(name, parentName, std::move(methods)),
+                     mergeRanges(keyword.range(), closingBrace.range()));
 }
 
 StmtPtr Parser::statement() {
@@ -137,12 +183,14 @@ StmtPtr Parser::statement() {
         return returnStatement();
     }
     if (match(TokenType::BREAK)) {
-        consume(TokenType::SEMICOLON, "expected ; after break");
-        return std::make_shared<BreakStmt>();
+        const Token keyword = previous();
+        const Token semicolon = consume(TokenType::SEMICOLON, "expected ; after break");
+        return withRange(std::make_shared<BreakStmt>(), mergeRanges(keyword.range(), semicolon.range()));
     }
     if (match(TokenType::CONTINUE)) {
-        consume(TokenType::SEMICOLON, "expected ; after continue");
-        return std::make_shared<ContinueStmt>();
+        const Token keyword = previous();
+        const Token semicolon = consume(TokenType::SEMICOLON, "expected ; after continue");
+        return withRange(std::make_shared<ContinueStmt>(), mergeRanges(keyword.range(), semicolon.range()));
     }
     if (match(TokenType::TRY)) {
         return tryStatement();
@@ -157,16 +205,18 @@ StmtPtr Parser::statement() {
 }
 
 std::shared_ptr<BlockStmt> Parser::blockStatement() {
-    consume(TokenType::LBRACE, "expected { to start block");
+    const Token openingBrace = consume(TokenType::LBRACE, "expected { to start block");
     std::vector<StmtPtr> statements;
     while (!check(TokenType::RBRACE) && !isAtEnd()) {
         statements.push_back(declaration());
     }
-    consume(TokenType::RBRACE, "expected } after block");
-    return std::make_shared<BlockStmt>(std::move(statements));
+    const Token closingBrace = consume(TokenType::RBRACE, "expected } after block");
+    return withRange(std::make_shared<BlockStmt>(std::move(statements)),
+                     mergeRanges(openingBrace.range(), closingBrace.range()));
 }
 
 StmtPtr Parser::ifStatement() {
+    const Token keyword = previous();
     consume(TokenType::LPAREN, "expected ( after if");
     ExprPtr condition = expression();
     consume(TokenType::RPAREN, "expected ) after if condition");
@@ -175,17 +225,23 @@ StmtPtr Parser::ifStatement() {
     if (match(TokenType::ELSE)) {
         elseBranch = statement();
     }
-    return std::make_shared<IfStmt>(std::move(condition), std::move(thenBranch), std::move(elseBranch));
+    const SourceRange endRange = elseBranch ? elseBranch->sourceRange : thenBranch->sourceRange;
+    return withRange(std::make_shared<IfStmt>(std::move(condition), std::move(thenBranch), std::move(elseBranch)),
+                     mergeRanges(keyword.range(), endRange));
 }
 
 StmtPtr Parser::whileStatement() {
+    const Token keyword = previous();
     consume(TokenType::LPAREN, "expected ( after while");
     ExprPtr condition = expression();
     consume(TokenType::RPAREN, "expected ) after while condition");
-    return std::make_shared<WhileStmt>(std::move(condition), statement());
+    StmtPtr body = statement();
+    return withRange(std::make_shared<WhileStmt>(std::move(condition), body),
+                     mergeRanges(keyword.range(), body->sourceRange));
 }
 
 StmtPtr Parser::forStatement() {
+    const Token keyword = previous();
     consume(TokenType::LPAREN, "expected ( after for");
     StmtPtr initializer = nullptr;
     if (match(TokenType::SEMICOLON)) {
@@ -209,26 +265,35 @@ StmtPtr Parser::forStatement() {
         increment = expression();
     }
     consume(TokenType::RPAREN, "expected ) after for clauses");
-    return std::make_shared<ForStmt>(std::move(initializer), std::move(condition), std::move(increment),
-                                     statement());
+    StmtPtr body = statement();
+    return withRange(std::make_shared<ForStmt>(std::move(initializer), std::move(condition), std::move(increment),
+                                               body),
+                     mergeRanges(keyword.range(), body->sourceRange));
 }
 
 StmtPtr Parser::returnStatement() {
+    const Token keyword = previous();
     ExprPtr value = nullptr;
     if (!check(TokenType::SEMICOLON)) {
         value = expression();
     }
-    consume(TokenType::SEMICOLON, "expected ; after return");
-    return std::make_shared<ReturnStmt>(std::move(value));
+    const Token semicolon = consume(TokenType::SEMICOLON, "expected ; after return");
+    const SourceRange endRange = value ? value->sourceRange : semicolon.range();
+    return withRange(std::make_shared<ReturnStmt>(std::move(value)),
+                     mergeRanges(keyword.range(), endRange));
 }
 
 StmtPtr Parser::throwStatement() {
+    const Token keyword = previous();
     ExprPtr value = expression();
     consume(TokenType::SEMICOLON, "expected ; after throw");
-    return std::make_shared<ThrowStmt>(std::move(value));
+    const SourceRange valueRange = value->sourceRange;
+    return withRange(std::make_shared<ThrowStmt>(std::move(value)),
+                     mergeRanges(keyword.range(), valueRange));
 }
 
 StmtPtr Parser::tryStatement() {
+    const Token keyword = previous();
     auto tryBlock = blockStatement();
     std::string catchParam;
     std::shared_ptr<BlockStmt> catchBlock = nullptr;
@@ -249,14 +314,19 @@ StmtPtr Parser::tryStatement() {
         error(previous(), "expected catch or finally after try block");
     }
 
-    return std::make_shared<TryStmt>(std::move(tryBlock), catchParam, std::move(catchBlock),
-                                     std::move(finallyBlock));
+    const SourceRange endRange = finallyBlock
+                                     ? finallyBlock->sourceRange
+                                     : (catchBlock ? catchBlock->sourceRange : tryBlock->sourceRange);
+    return withRange(std::make_shared<TryStmt>(std::move(tryBlock), catchParam, std::move(catchBlock),
+                                               std::move(finallyBlock)),
+                     mergeRanges(keyword.range(), endRange));
 }
 
 StmtPtr Parser::expressionStatement() {
     ExprPtr expr = expression();
     consume(TokenType::SEMICOLON, "expected ; after expression");
-    return std::make_shared<ExprStmt>(std::move(expr));
+    const SourceRange exprRange = expr->sourceRange;
+    return withRange(std::make_shared<ExprStmt>(std::move(expr)), exprRange);
 }
 
 ExprPtr Parser::expression() {
@@ -269,7 +339,8 @@ ExprPtr Parser::assignment() {
     if (matchAny({TokenType::ASSIGN, TokenType::PLUS_ASSIGN, TokenType::MINUS_ASSIGN})) {
         const TokenType op = previous().type;
         ExprPtr value = assignment();
-        return std::make_shared<AssignmentExpr>(std::move(expr), op, std::move(value));
+        SourceRange range = mergeRanges(expr->sourceRange, value->sourceRange);
+        return withRange(std::make_shared<AssignmentExpr>(std::move(expr), op, std::move(value)), range);
     }
 
     return expr;
@@ -278,7 +349,9 @@ ExprPtr Parser::assignment() {
 ExprPtr Parser::pipe() {
     ExprPtr expr = logicalOr();
     while (match(TokenType::PIPE)) {
-        expr = std::make_shared<BinaryExpr>(std::move(expr), TokenType::PIPE, logicalOr());
+        ExprPtr right = logicalOr();
+        SourceRange range = mergeRanges(expr->sourceRange, right->sourceRange);
+        expr = withRange(std::make_shared<BinaryExpr>(std::move(expr), TokenType::PIPE, std::move(right)), range);
     }
     return expr;
 }
@@ -286,7 +359,9 @@ ExprPtr Parser::pipe() {
 ExprPtr Parser::logicalOr() {
     ExprPtr expr = logicalAnd();
     while (match(TokenType::OR)) {
-        expr = std::make_shared<BinaryExpr>(std::move(expr), TokenType::OR, logicalAnd());
+        ExprPtr right = logicalAnd();
+        SourceRange range = mergeRanges(expr->sourceRange, right->sourceRange);
+        expr = withRange(std::make_shared<BinaryExpr>(std::move(expr), TokenType::OR, std::move(right)), range);
     }
     return expr;
 }
@@ -294,7 +369,9 @@ ExprPtr Parser::logicalOr() {
 ExprPtr Parser::logicalAnd() {
     ExprPtr expr = equality();
     while (match(TokenType::AND)) {
-        expr = std::make_shared<BinaryExpr>(std::move(expr), TokenType::AND, equality());
+        ExprPtr right = equality();
+        SourceRange range = mergeRanges(expr->sourceRange, right->sourceRange);
+        expr = withRange(std::make_shared<BinaryExpr>(std::move(expr), TokenType::AND, std::move(right)), range);
     }
     return expr;
 }
@@ -302,7 +379,10 @@ ExprPtr Parser::logicalAnd() {
 ExprPtr Parser::equality() {
     ExprPtr expr = comparison();
     while (matchAny({TokenType::EQ, TokenType::NEQ})) {
-        expr = std::make_shared<BinaryExpr>(std::move(expr), previous().type, comparison());
+        const TokenType op = previous().type;
+        ExprPtr right = comparison();
+        SourceRange range = mergeRanges(expr->sourceRange, right->sourceRange);
+        expr = withRange(std::make_shared<BinaryExpr>(std::move(expr), op, std::move(right)), range);
     }
     return expr;
 }
@@ -310,7 +390,10 @@ ExprPtr Parser::equality() {
 ExprPtr Parser::comparison() {
     ExprPtr expr = term();
     while (matchAny({TokenType::LT, TokenType::LTE, TokenType::GT, TokenType::GTE})) {
-        expr = std::make_shared<BinaryExpr>(std::move(expr), previous().type, term());
+        const TokenType op = previous().type;
+        ExprPtr right = term();
+        SourceRange range = mergeRanges(expr->sourceRange, right->sourceRange);
+        expr = withRange(std::make_shared<BinaryExpr>(std::move(expr), op, std::move(right)), range);
     }
     return expr;
 }
@@ -318,7 +401,10 @@ ExprPtr Parser::comparison() {
 ExprPtr Parser::term() {
     ExprPtr expr = factor();
     while (matchAny({TokenType::PLUS, TokenType::MINUS})) {
-        expr = std::make_shared<BinaryExpr>(std::move(expr), previous().type, factor());
+        const TokenType op = previous().type;
+        ExprPtr right = factor();
+        SourceRange range = mergeRanges(expr->sourceRange, right->sourceRange);
+        expr = withRange(std::make_shared<BinaryExpr>(std::move(expr), op, std::move(right)), range);
     }
     return expr;
 }
@@ -326,14 +412,21 @@ ExprPtr Parser::term() {
 ExprPtr Parser::factor() {
     ExprPtr expr = unary();
     while (matchAny({TokenType::STAR, TokenType::SLASH, TokenType::PERCENT})) {
-        expr = std::make_shared<BinaryExpr>(std::move(expr), previous().type, unary());
+        const TokenType op = previous().type;
+        ExprPtr right = unary();
+        SourceRange range = mergeRanges(expr->sourceRange, right->sourceRange);
+        expr = withRange(std::make_shared<BinaryExpr>(std::move(expr), op, std::move(right)), range);
     }
     return expr;
 }
 
 ExprPtr Parser::unary() {
     if (matchAny({TokenType::NOT, TokenType::MINUS})) {
-        return std::make_shared<UnaryExpr>(previous().type, unary());
+        const Token op = previous();
+        ExprPtr operand = unary();
+        const SourceRange operandRange = operand->sourceRange;
+        return withRange(std::make_shared<UnaryExpr>(op.type, std::move(operand)),
+                         mergeRanges(op.range(), operandRange));
     }
     return call();
 }
@@ -345,10 +438,13 @@ ExprPtr Parser::call() {
         if (match(TokenType::LPAREN)) {
             --current;
             expr = finishCall(std::move(expr));
+        } else if (match(TokenType::LBRACKET)) {
+            --current;
+            expr = finishIndex(std::move(expr));
         } else if (match(TokenType::DOT)) {
-            const std::string property =
-                consume(TokenType::IDENTIFIER, "expected property name after .").lexeme;
-            expr = std::make_shared<MemberExpr>(std::move(expr), property);
+            const Token property = consume(TokenType::IDENTIFIER, "expected property name after .");
+            SourceRange range = mergeRanges(expr->sourceRange, property.range());
+            expr = withRange(std::make_shared<MemberExpr>(std::move(expr), property.lexeme), range);
         } else {
             break;
         }
@@ -368,35 +464,36 @@ ExprPtr Parser::primary() {
     }
 
     if (match(TokenType::NUMBER)) {
-        return std::make_shared<LiteralExpr>(std::stod(previous().lexeme));
+        return withRange(std::make_shared<LiteralExpr>(std::stod(previous().lexeme)), previous());
     }
     if (match(TokenType::STRING)) {
-        return std::make_shared<LiteralExpr>(previous().lexeme);
+        return withRange(std::make_shared<LiteralExpr>(previous().lexeme), previous());
     }
     if (match(TokenType::INTERP_STRING)) {
-        return std::make_shared<StringInterpolationExpr>(parseInterpolationParts(previous().lexeme));
+        return withRange(std::make_shared<StringInterpolationExpr>(parseInterpolationParts(previous())), previous());
     }
     if (match(TokenType::TRUE_)) {
-        return std::make_shared<LiteralExpr>(true);
+        return withRange(std::make_shared<LiteralExpr>(true), previous());
     }
     if (match(TokenType::FALSE_)) {
-        return std::make_shared<LiteralExpr>(false);
+        return withRange(std::make_shared<LiteralExpr>(false), previous());
     }
     if (match(TokenType::NULL_)) {
-        return std::make_shared<LiteralExpr>(std::monostate{});
+        return withRange(std::make_shared<LiteralExpr>(std::monostate{}), previous());
     }
     if (match(TokenType::THIS)) {
-        return std::make_shared<ThisExpr>();
+        return withRange(std::make_shared<ThisExpr>(), previous());
     }
     if (match(TokenType::IDENTIFIER)) {
-        return std::make_shared<VariableExpr>(previous().lexeme);
+        return withRange(std::make_shared<VariableExpr>(previous().lexeme), previous());
     }
     if (match(TokenType::FUNC)) {
         return parseFunctionExpression();
     }
     if (match(TokenType::NEW)) {
-        ExprPtr callee = std::make_shared<VariableExpr>(
-            consume(TokenType::IDENTIFIER, "expected class name after new").lexeme);
+        const Token keyword = previous();
+        const Token className = consume(TokenType::IDENTIFIER, "expected class name after new");
+        ExprPtr callee = withRange(std::make_shared<VariableExpr>(className.lexeme), className);
         consume(TokenType::LPAREN, "expected ( after class name");
         std::vector<ExprPtr> arguments;
         if (!check(TokenType::RPAREN)) {
@@ -404,20 +501,24 @@ ExprPtr Parser::primary() {
                 arguments.push_back(expression());
             } while (match(TokenType::COMMA));
         }
-        consume(TokenType::RPAREN, "expected ) after constructor arguments");
-        return std::make_shared<NewExpr>(std::move(callee), std::move(arguments));
+        const Token closingParen = consume(TokenType::RPAREN, "expected ) after constructor arguments");
+        return withRange(std::make_shared<NewExpr>(std::move(callee), std::move(arguments)),
+                         mergeRanges(keyword.range(), closingParen.range()));
     }
     if (match(TokenType::LBRACKET)) {
+        const Token openingBracket = previous();
         std::vector<ExprPtr> elements;
         if (!check(TokenType::RBRACKET)) {
             do {
                 elements.push_back(expression());
             } while (match(TokenType::COMMA));
         }
-        consume(TokenType::RBRACKET, "expected ] after array literal");
-        return std::make_shared<ArrayExpr>(std::move(elements));
+        const Token closingBracket = consume(TokenType::RBRACKET, "expected ] after array literal");
+        return withRange(std::make_shared<ArrayExpr>(std::move(elements)),
+                         mergeRanges(openingBracket.range(), closingBracket.range()));
     }
     if (match(TokenType::LBRACE)) {
+        const Token openingBrace = previous();
         std::vector<std::pair<std::string, ExprPtr>> properties;
         if (!check(TokenType::RBRACE)) {
             do {
@@ -431,16 +532,19 @@ ExprPtr Parser::primary() {
                 properties.emplace_back(key, expression());
             } while (match(TokenType::COMMA));
         }
-        consume(TokenType::RBRACE, "expected } after object literal");
-        return std::make_shared<ObjectExpr>(std::move(properties));
+        const Token closingBrace = consume(TokenType::RBRACE, "expected } after object literal");
+        return withRange(std::make_shared<ObjectExpr>(std::move(properties)),
+                         mergeRanges(openingBrace.range(), closingBrace.range()));
     }
     if (match(TokenType::LPAREN)) {
+        const Token openingParen = previous();
         ExprPtr expr = expression();
-        consume(TokenType::RPAREN, "expected ) after grouped expression");
+        const Token closingParen = consume(TokenType::RPAREN, "expected ) after grouped expression");
+        expr->sourceRange = mergeRanges(openingParen.range(), closingParen.range());
         return expr;
     }
 
-    error(peek(), "unexpected token");
+    error(peek(), "unexpected token " + describeToken(peek()));
 }
 
 ExprPtr Parser::finishCall(ExprPtr callee) {
@@ -451,38 +555,60 @@ ExprPtr Parser::finishCall(ExprPtr callee) {
             arguments.push_back(expression());
         } while (match(TokenType::COMMA));
     }
-    consume(TokenType::RPAREN, "expected ) after arguments");
-    return std::make_shared<CallExpr>(std::move(callee), std::move(arguments));
+    const Token closingParen = consume(TokenType::RPAREN, "expected ) after arguments");
+    const SourceRange calleeRange = callee->sourceRange;
+    return withRange(std::make_shared<CallExpr>(std::move(callee), std::move(arguments)),
+                     mergeRanges(calleeRange, closingParen.range()));
+}
+
+ExprPtr Parser::finishIndex(ExprPtr object) {
+    consume(TokenType::LBRACKET, "expected [ before index expression");
+    ExprPtr index = expression();
+    const Token closingBracket = consume(TokenType::RBRACKET, "expected ] after index expression");
+    const SourceRange objectRange = object->sourceRange;
+    return withRange(std::make_shared<IndexExpr>(std::move(object), std::move(index)),
+                     mergeRanges(objectRange, closingBracket.range()));
 }
 
 ExprPtr Parser::parseFunctionExpression() {
+    const Token keyword = previous();
     consume(TokenType::LPAREN, "expected ( after func");
     std::vector<Parameter> parameters = parseParameterList(TokenType::RPAREN);
     consume(TokenType::RPAREN, "expected ) after parameters");
     std::shared_ptr<BlockStmt> body = blockStatement();
-    return std::make_shared<FunctionExpr>(std::move(parameters), std::move(body->statements));
+    return withRange(std::make_shared<FunctionExpr>(std::move(parameters), std::move(body->statements)),
+                     mergeRanges(keyword.range(), body->sourceRange));
 }
 
 ExprPtr Parser::parseArrowFunctionWithIdentifier() {
-    Parameter parameter{advance().lexeme, ""};
+    const Token parameterToken = advance();
+    Parameter parameter{parameterToken.lexeme, ""};
     consume(TokenType::ARROW, "expected => after arrow parameter");
     if (check(TokenType::LBRACE)) {
         std::shared_ptr<BlockStmt> body = blockStatement();
-        return std::make_shared<FunctionExpr>(std::vector<Parameter>{parameter}, std::move(body->statements));
+        return withRange(std::make_shared<FunctionExpr>(std::vector<Parameter>{parameter}, std::move(body->statements)),
+                         mergeRanges(parameterToken.range(), body->sourceRange));
     }
-    return std::make_shared<FunctionExpr>(std::vector<Parameter>{parameter}, expression());
+    ExprPtr body = expression();
+    const SourceRange bodyRange = body->sourceRange;
+    return withRange(std::make_shared<FunctionExpr>(std::vector<Parameter>{parameter}, std::move(body)),
+                     mergeRanges(parameterToken.range(), bodyRange));
 }
 
 ExprPtr Parser::parseArrowFunctionWithParens() {
-    consume(TokenType::LPAREN, "expected ( before arrow parameters");
+    const Token openingParen = consume(TokenType::LPAREN, "expected ( before arrow parameters");
     std::vector<Parameter> parameters = parseParameterList(TokenType::RPAREN);
     consume(TokenType::RPAREN, "expected ) after arrow parameters");
     consume(TokenType::ARROW, "expected => after arrow parameter list");
     if (check(TokenType::LBRACE)) {
         std::shared_ptr<BlockStmt> body = blockStatement();
-        return std::make_shared<FunctionExpr>(std::move(parameters), std::move(body->statements));
+        return withRange(std::make_shared<FunctionExpr>(std::move(parameters), std::move(body->statements)),
+                         mergeRanges(openingParen.range(), body->sourceRange));
     }
-    return std::make_shared<FunctionExpr>(std::move(parameters), expression());
+    ExprPtr body = expression();
+    const SourceRange bodyRange = body->sourceRange;
+    return withRange(std::make_shared<FunctionExpr>(std::move(parameters), std::move(body)),
+                     mergeRanges(openingParen.range(), bodyRange));
 }
 
 std::vector<Parameter> Parser::parseParameterList(TokenType closingToken) {
@@ -503,7 +629,8 @@ std::string Parser::parseOptionalTypeHint() {
     return consume(TokenType::IDENTIFIER, "expected type name").lexeme;
 }
 
-std::vector<std::variant<std::string, ExprPtr>> Parser::parseInterpolationParts(const std::string& raw) {
+std::vector<std::variant<std::string, ExprPtr>> Parser::parseInterpolationParts(const Token& token) {
+    const std::string& raw = token.lexeme;
     std::vector<std::variant<std::string, ExprPtr>> parts;
     std::string currentText;
     std::size_t index = 0;
@@ -527,12 +654,16 @@ std::vector<std::variant<std::string, ExprPtr>> Parser::parseInterpolationParts(
                 }
             }
             if (depth != 0) {
-                throw std::runtime_error("unterminated interpolation expression");
+                throw SyntaxError("unterminated interpolation expression", source, token.range());
             }
             const std::string inner = raw.substr(start, index - start);
             Lexer lexer(inner);
-            Parser parser(lexer.tokenize());
-            parts.emplace_back(parser.parseExpressionOnly());
+            try {
+                Parser parser(lexer.tokenize());
+                parts.emplace_back(parser.parseExpressionOnly());
+            } catch (const SyntaxError& error) {
+                throw SyntaxError("invalid interpolation expression: " + error.message(), source, token.range());
+            }
             ++index;
             continue;
         }
@@ -637,5 +768,5 @@ const Token& Parser::consume(TokenType type, const std::string& message) {
 }
 
 [[noreturn]] void Parser::error(const Token& token, const std::string& message) const {
-    throw std::runtime_error("Parser error at " + tokenDescription(token) + ": " + message);
+    throw SyntaxError(message, source, token.range());
 }
