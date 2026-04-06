@@ -1,0 +1,49 @@
+  # Simple Banking System Example
+
+  class BankAccount {
+      func __init__(owner, balance) {
+          this.owner = owner;
+          this.balance = balance;
+      }
+
+      func deposit(amount) {
+          if (amount <= 0) {
+              throw "Deposit amount must be positive";
+          }
+          this.balance = this.balance + amount;
+          print(this.owner + " deposited $" + amount);
+      }
+
+      func withdraw(amount) {
+          if (amount > this.balance) {
+              throw "Insufficient funds";
+          }
+          this.balance = this.balance - amount;
+          print(this.owner + " withdrew $" + amount);
+      }
+
+      func getBalance() {
+          return this.balance;
+      }
+  }
+
+  # Main program
+  func main() {
+      var account = new BankAccount("Alice", 1000);
+
+      try {
+          account.deposit(500);
+          print("Balance: $" + account.getBalance());
+
+          account.withdraw(200);
+          print("Balance: $" + account.getBalance());
+
+          account.withdraw(2000);  # This will throw
+      } catch (error) {
+          print("Error: " + error);
+      } finally {
+          print("Transaction complete");
+      }
+  }
+
+  main();
