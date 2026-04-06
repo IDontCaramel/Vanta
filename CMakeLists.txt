@@ -17,6 +17,7 @@ set(VANTA_TEST_SOURCES
     tests/test_lexer.cpp
     tests/test_parser.cpp
     tests/test_runtime.cpp
+    tests/test_integration.cpp
 )
 
 # Main executable

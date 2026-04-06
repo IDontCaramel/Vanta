@@ -1,0 +1,12 @@
+class Person {
+    func __init__(name) {
+        this.name = name;
+    }
+
+    func greet() {
+        return $"Hello, I'm {this.name}";
+    }
+}
+
+var person = new Person("Alice");
+print(person.greet());
