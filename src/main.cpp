@@ -5,10 +5,17 @@
 #include "evaluator.h"
 #include "lexer.h"
 #include "parser.h"
+#include "source_file.h"
 
 int main(int argc, char* argv[]) {
     if (argc != 2) {
-        std::cerr << "Usage: vanta <filename>" << std::endl;
+        std::cerr << "Usage: vanta <filename" << kSourceFileExtension << ">" << std::endl;
+        return 1;
+    }
+
+    if (!hasSupportedSourceExtension(argv[1])) {
+        std::cerr << "Error: expected a " << supportedSourceFileDescription()
+                  << " source file, got: " << argv[1] << std::endl;
         return 1;
     }
 
